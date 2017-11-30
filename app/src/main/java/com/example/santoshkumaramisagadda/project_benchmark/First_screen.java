@@ -32,15 +32,9 @@ public class First_screen extends AppCompatActivity {
     static SeekBar percent;
     static TextView percent_val;
     static Button btn_next;
-    static Button btn_test;
     static int percent_value;
-    static TextView result;
-    static String val;
-    static int flag=0;
     static int classifier=0;
-    int step = 1;
-    int max = 100;
-    int min = 1;
+
     String arff_name="breast.arff";
     String arff_location= Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +arff_name;
 
@@ -50,17 +44,48 @@ public class First_screen extends AppCompatActivity {
     String train_name="train.arff";
     String train_location= Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +train_name;
 
+    String log_name="log";
+    String log_location= Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project"+ File.separator +log_name;
+
     Instances splitTrain,splitTest,data;
 
     Intent intent;
 
     private Spinner spinner;
-    private static final String[] paths = {"Classifier 1", "Classifier 2", "Classifier 3","Classifier 4"};
+    private static final String[] paths = {"SVM Classifier", "Random forest Classifier", "Bayes Network Classifier","MLP Classifier"};
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_first_screen);
+
+        if(!new File(log_location).exists())
+            try {
+                BufferedWriter out = new BufferedWriter(new FileWriter(new File(log_location)));
+                out.write("Log File for experiments");
+                out.newLine();
+
+                //adding initial headers to indicate form of output experiments
+                out.write("Output format for SVM - Classifier Type,Dataset, Training Size %, Accuracy, Time taken for testing, TAR, TRR, FAR, FRR, HTER, Execution Time, RMSE");
+                out.newLine();
+                out.newLine();
+                out.write("Output format for MLP - Classifier Type,Dataset,Training Size %, Accuracy, Time taken for testing, TAR, TRR, FAR, FRR, HTER, Execution Time, RMSE");
+                out.newLine();
+                out.newLine();
+                out.write("Output format for Random Forests - Classifier Type,Dataset,Training Size %,Accuracy, Time taken for testing, TAR, TRR, FAR, FRR, HTER, Execution Time, RMSE");
+                out.newLine();
+                out.newLine();
+                out.write("Output format for Bayesian Network - Classifier Type,Dataset,Training Size %,Accuracy, Time taken for testing, TAR, TRR, FAR, FRR, HTER, Execution Time, RMSE");
+                out.newLine();
+                out.newLine();
+                out.write("***********----------***********");
+                out.newLine();
+                out.close();
+            }catch (Exception e)
+            {
+                e.printStackTrace();
+            }
+
 
         percent = (SeekBar) findViewById(R.id.seekBar);
         percent_val = (TextView) findViewById(R.id.textView2);
@@ -103,27 +128,20 @@ public class First_screen extends AppCompatActivity {
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener()
         {
             public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
-                result = (TextView) findViewById(R.id.textView6);
-                String output = "";
                 switch (position) {
                     case 0:
-                        output += "Classifier selected = Classifier1";
                         classifier=1;
                         break;
                     case 1:
-                        output += "Classifier selected = Classifier2";
                         classifier=2;
                         break;
                     case 2:
-                        output += "Classifier selected = Classifier3";
                         classifier=3;
                         break;
                     case 3:
-                        output += "Classifier selected = Classifier3";
-                        classifier=3;
+                        classifier=4;
                         break;
                 }
-                result.setText(output);
             }
 
             @Override
@@ -177,20 +195,11 @@ public class First_screen extends AppCompatActivity {
                 }
             }
         });
-
-        //btn_test=(Button) findViewById(R.id.button2);
-        /*btn_test.setOnClickListener(new View.OnClickListener()
-        {
-            public void onClick(View v)
-            {
-                testData();
-            }
-        });*/
     }
 
     public void splitData(int x) throws IOException
     {
-        BufferedReader inputReader=new BufferedReader(new FileReader(Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +arff_name));
+        BufferedReader inputReader=new BufferedReader(new FileReader(arff_location));
         data=new Instances(inputReader);
         data.setClassIndex(data.numAttributes() - 1);
         data.randomize(new java.util.Random());

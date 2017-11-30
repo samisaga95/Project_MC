@@ -1,8 +1,5 @@
 package com.example.santoshkumaramisagadda.project_benchmark;
 
-/**
- * Created by santoshkumaramisagadda on 11/8/17.
- */
 import android.app.Activity;
 import android.content.Context;
 import android.util.Log;
@@ -169,8 +166,6 @@ public class UploadService {
                     activity.runOnUiThread(new Runnable() {
                         public void run() {
                             btn_upload.setEnabled(true);
-                            Toast.makeText(context, "File Upload Complete.",
-                                    Toast.LENGTH_SHORT).show();
                         }
                     });
                 }

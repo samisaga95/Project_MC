@@ -1,5 +1,6 @@
 package com.example.santoshkumaramisagadda.project_benchmark;
 
+import android.content.Intent;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Environment;
@@ -38,6 +39,12 @@ public class MLPClassifier extends AppCompatActivity {
     String modelFile="output.model";
     String model_location= Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +modelFile;
 
+    String test_name="test.arff";
+    String test_location= Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +test_name;
+
+    String log_name="log";
+    String log_location= Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +log_name;
+
     static Button train_button;
     static Button test_button;
     static TextView learningRate;
@@ -46,16 +53,12 @@ public class MLPClassifier extends AppCompatActivity {
     static TextView noOfEpoch;
     static TextView validationSetSize;
 
-
-    Handler batteryHandler;
-    BatteryManager mBatteryManager;
-    long powerConsumption=0;
-    boolean running;
     Instances splitTest;
 
     private static final String[] loss_functions = {"SquaredError", "ApproximateAbsoluteError "};
     private static final String[] activ_funcitons = {"Sigmoid ","ApproximateSigmoid", "Softplus "};
-    public void onCreate(Bundle savedInstanceState) {
+    public void onCreate(Bundle savedInstanceState)
+    {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_mlpclassifier);
 
@@ -66,17 +69,28 @@ public class MLPClassifier extends AppCompatActivity {
         seed = (TextView) findViewById(R.id.editText11);
         noOfEpoch=(TextView)findViewById(R.id.editText7);
         validationSetSize=(TextView)findViewById(R.id.editText8);
+
         ArrayAdapter<String> adapter1 = new ArrayAdapter<String>(MLPClassifier.this,
                 android.R.layout.simple_spinner_item, loss_functions);
         ArrayAdapter<String> adapter2 = new ArrayAdapter<String>(MLPClassifier.this,
                 android.R.layout.simple_spinner_item, activ_funcitons);
+
         train_button = (Button) findViewById(R.id.button8);
-        train_button.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) {
-                String cmd = "java -cp wekaSTRIPPED.jar weka.classifiers.functions.MultilayerPerceptron  -L "+ learningRate.getText()+" -M "+momentum.getText()+" -N "+noOfEpoch.getText()+" -V "+validationSetSize.getText()+ " -S "+ seed.getText()+" -t trial1.arff -d output.model";
-                System.out.println(cmd);
-                Toast.makeText(view.getContext(), cmd, Toast.LENGTH_LONG).show();
-                try {
+        test_button=(Button) findViewById(R.id.button9);
+
+        test_button.setEnabled(false);
+        train_button.setOnClickListener(new View.OnClickListener()
+        {
+            public void onClick(View view)
+            {
+                try
+                {
+                    train_button.setEnabled(false);
+                    Toast.makeText(MLPClassifier.this,"Model training, Please wait.",Toast.LENGTH_SHORT).show();
+                    Thread.sleep(1000);
+                    String cmd = "java -cp wekaSTRIPPED.jar weka.classifiers.functions.MultilayerPerceptron  -L "+ learningRate.getText()+" -M "+momentum.getText()+" -N "+noOfEpoch.getText()+" -V "+validationSetSize.getText()+ " -S "+ seed.getText()+" -t trial1.arff -d output.model";
+                    System.out.println(cmd);
+
                     //delete both output.model and command.txt
                     File file1=new File(command_location);
                     if(file1.exists())
@@ -91,22 +105,17 @@ public class MLPClassifier extends AppCompatActivity {
                     writer1.flush();
                     writer1.close();
 
-                    Toast.makeText(
-                            view.getContext(), "Saved", Toast.LENGTH_SHORT).show();
-                } catch (Exception e) {
+                    //upload command.txt
+
+                    UploadService upload=new UploadService(MLPClassifier.this, getApplicationContext(),command_location,commandFile,train_button,0);
+                    upload.startUpload();
+
+                    test_button.setEnabled(true);
+                }
+                catch (Exception e) {
                     Toast.makeText(view.getContext(), "Error in storing the command file : " + e.getMessage(), Toast.LENGTH_LONG).show();
                 }
-//                } else {
-//                    Toast.makeText(view.getContext(), "Please enter all the fields", Toast.LENGTH_LONG).show();
-//                }
-
-                //upload command.txt
-
-                Toast.makeText(MLPClassifier.this,"Model training, Please wait.",Toast.LENGTH_SHORT).show();
-                UploadService upload=new UploadService(MLPClassifier.this, getApplicationContext(),command_location,commandFile,train_button,0);
-                upload.startUpload();
             }
-
         });
 
         test_button=(Button) findViewById(R.id.button9);
@@ -116,33 +125,39 @@ public class MLPClassifier extends AppCompatActivity {
                 DownloadService downloadService=new DownloadService(MLPClassifier.this,getApplicationContext(),test_button);
                 downloadService.startDownload();
 
-                try {
+                try
+                {
+                    File model=new File(model_location);
+                    while(!model.exists()){
+                        model=new File(model_location);
+                    }
                     testData();
-                } catch (FileNotFoundException e) {
-                    e.printStackTrace();
-                } catch (IOException e) {
+                }
+                catch (FileNotFoundException e)
+                {
                     e.printStackTrace();
                 }
-
+                catch (IOException e)
+                {
+                    e.printStackTrace();
+                }
             }
         });
-
     }
 
     public void testData() throws IOException {
-        //batteryHandler.post(batteryRunnable); //starting the battery handler to measure power consumption
-        BufferedReader inputReader=new BufferedReader(new FileReader(Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +"test.arff"));
+        BufferedReader inputReader=new BufferedReader(new FileReader(test_location));
         splitTest=new Instances(inputReader);
         try
         {
-            running=true;
+            long start=System.currentTimeMillis();
             splitTest.setClassIndex(splitTest.numAttributes() - 1 );
-            ObjectInputStream ois = new ObjectInputStream(new FileInputStream(Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +"output.model"));
+            ObjectInputStream ois = new ObjectInputStream(new FileInputStream(model_location));
             Classifier cls = (Classifier) ois.readObject();
             ois.close();
             final Evaluation eval = new Evaluation(splitTest);
             eval.evaluateModel(cls, splitTest);
-            running=false;
+            final long test_time= System.currentTimeMillis()-start;
 
 
             runOnUiThread(new Runnable()
@@ -159,24 +174,33 @@ public class MLPClassifier extends AppCompatActivity {
                         double FNR = eval.falseNegativeRate(0);
                         double HTER = (FPR + FNR) / 2;
 
-                        String output = "Classifier used: Bayseian Network,\nInput file: Breast.arff" + ",\nPercentage for training: " + percentage + ",\nCorrect prediction: " + eval.pctCorrect() + ",\nPower consumption: " +
-                                //powerConsumption / (1000 * 3600) +
-                                ",\nTrue positive: " +
-                                TPR + ",\nTrue negative: " + TNR + ",\nFalse Postive: " + FPR + ",\nFalse negative: " + FNR + ",\nHTER: " + HTER + ",\nRMSE: " + eval.rootMeanSquaredError();
+                        String output = "Classifier used: Multilayer Perceptron, Input file: Breast.arff" + ",\nPercentage for training: " + percentage + ",\nAccuracy: " + eval.pctCorrect() + ",\nTime taken: " + test_time + " milliseconds,\nTrue positive: " + TPR + ",\nTrue negative: " + TNR + ",\nFalse Postive: " + FPR + ",\nFalse negative: " + FNR + ",\nHTER: " + HTER + ",\nRMSE: " + eval.rootMeanSquaredError();
 
-                        Toast.makeText(MLPClassifier.this,output,Toast.LENGTH_LONG).show();
-                        //writing to the file
+                        while(output==null)
+                        {
+                            Thread.sleep(500);
+                        }
 
-                        /*BufferedWriter out = new BufferedWriter(new FileWriter(file, true), 1024);
-                        out.write(data);
+                        BufferedReader br = new BufferedReader(new FileReader(new File(log_location)));
+                        String line;
+                        StringBuilder builder=new StringBuilder();
+                        while((line=br.readLine())!=null)
+                        {
+                            builder.append(line);
+                            builder.append("\n");
+                        }
+
+                        builder.append(output);
+
+                        BufferedWriter out = new BufferedWriter(new FileWriter(new File(log_location)));
+                        out.write(String.valueOf(builder));
                         out.newLine();
                         out.newLine();
-                        out.close();*/
-                        Thread.sleep(2000);
-                        TextView tv=(TextView) findViewById(R.id.textView);
-                        tv.setText(output);
-                        //Intent intent = new Intent(RFClassifier.this, log.class);
-                        //startActivity(intent);
+                        out.close();
+
+                        Intent intent = new Intent(MLPClassifier.this, log.class);
+                        intent.putExtra("output",output);
+                        startActivity(intent);
 
 
                     }
@@ -192,17 +216,5 @@ public class MLPClassifier extends AppCompatActivity {
             e.printStackTrace();
         }
     }
-    Runnable batteryRunnable=new Runnable() {
-        @Override
-        public void run() {
-            long currentLife= 0;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                currentLife = mBatteryManager.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW);
-            }
-            powerConsumption=powerConsumption+currentLife*10;
-//            Log.d("power consumed",""+powerConsumption);
-            if(running)
-                batteryHandler.postDelayed(this,10);
-        }
-    };
+
 }

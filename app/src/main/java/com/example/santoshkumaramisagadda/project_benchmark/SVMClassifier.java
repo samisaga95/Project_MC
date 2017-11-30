@@ -1,5 +1,6 @@
 package com.example.santoshkumaramisagadda.project_benchmark;
 
+import android.content.Intent;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Environment;
@@ -39,39 +40,55 @@ public class SVMClassifier extends AppCompatActivity {
     String modelFile="output.model";
     String model_location= Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +modelFile;
 
+    String test_name="test.arff";
+    String test_location= Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +test_name;
+
+    String log_name="log";
+    String log_location= Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +log_name;
+
     static Button train_button;
     static Button test_button;
     static TextView noOfValidations;
     static TextView seed;
 
-    Handler batteryHandler;
-    BatteryManager mBatteryManager;
-    long powerConsumption=0;
-    boolean running;
     Instances splitTest;
+
     private Spinner spinner;
     private static final String[] kernels = {"PolyKernel", "RBFKernel", "NormalizedPolyKernel"};
+
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_svmclassifier);
 
         percentage= getIntent().getExtras().getInt("percentage");
 
-        noOfValidations = (TextView) findViewById(R.id.editText3);
+        //noOfValidations = (TextView) findViewById(R.id.editText3);
         seed = (TextView) findViewById(R.id.editText2);
         noOfValidations = (TextView) findViewById(R.id.editText);
+
         spinner =(Spinner)findViewById(R.id.spinner2);
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(SVMClassifier.this,
                 android.R.layout.simple_spinner_item, kernels);
 
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinner.setAdapter(adapter);
+
         train_button = (Button) findViewById(R.id.button4);
+        test_button=(Button) findViewById(R.id.button6);
+
+        test_button.setEnabled(false);
+
         train_button.setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
-                String cmd = "java -cp wekaSTRIPPED.jar weka.classifiers.functions.SMO -V "+ noOfValidations.getText()+" -W "+seed.getText()+" -K weka.classifiers.functions.supportVector."+spinner.getSelectedItem().toString()+" -t trial1.arff -d output.model";
-                Toast.makeText(view.getContext(), cmd, Toast.LENGTH_LONG).show();
-                try {
+
+                try
+                {
+                    train_button.setEnabled(false);
+                    Toast.makeText(SVMClassifier.this,"Model training, Please wait.",Toast.LENGTH_SHORT).show();
+                    Thread.sleep(1000);
+                    String cmd = "java -cp wekaSTRIPPED.jar weka.classifiers.functions.SMO -V "+ noOfValidations.getText()+" -W "+seed.getText()+" -K weka.classifiers.functions.supportVector."+spinner.getSelectedItem().toString()+" -t train.arff -d output.model";
+
+
                     //delete both output.model and command.txt
                     File file1=new File(command_location);
                     if(file1.exists())
@@ -86,25 +103,22 @@ public class SVMClassifier extends AppCompatActivity {
                     writer1.flush();
                     writer1.close();
 
-                    Toast.makeText(
-                            view.getContext(), "Saved", Toast.LENGTH_SHORT).show();
-                } catch (Exception e) {
+                    //upload command text file
+                    UploadService upload=new UploadService(SVMClassifier.this, getApplicationContext(),command_location,commandFile,train_button,0);
+                    upload.startUpload();
+
+                    test_button.setEnabled(true);
+
+                }
+                catch (Exception e)
+                {
                     Toast.makeText(view.getContext(), "Error in storing the command file : " + e.getMessage(), Toast.LENGTH_LONG).show();
                 }
-//                } else {
-//                    Toast.makeText(view.getContext(), "Please enter all the fields", Toast.LENGTH_LONG).show();
-//                }
-
-                //upload command.txt
-
-                Toast.makeText(SVMClassifier.this,"Model training, Please wait.",Toast.LENGTH_SHORT).show();
-                UploadService upload=new UploadService(SVMClassifier.this, getApplicationContext(),command_location,commandFile,train_button,0);
-                upload.startUpload();
             }
 
         });
 
-        test_button=(Button) findViewById(R.id.button6);
+
         test_button.setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
 
@@ -112,6 +126,10 @@ public class SVMClassifier extends AppCompatActivity {
                 downloadService.startDownload();
 
                 try {
+                    File model=new File(model_location);
+                    while(!model.exists()){
+                        model=new File(model_location);
+                    }
                     testData();
                 } catch (FileNotFoundException e) {
                     e.printStackTrace();
@@ -125,19 +143,18 @@ public class SVMClassifier extends AppCompatActivity {
     }
 
     public void testData() throws IOException {
-        //batteryHandler.post(batteryRunnable); //starting the battery handler to measure power consumption
-        BufferedReader inputReader=new BufferedReader(new FileReader(Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +"test.arff"));
+        BufferedReader inputReader=new BufferedReader(new FileReader(test_location));
         splitTest=new Instances(inputReader);
         try
         {
-            running=true;
+            long start=System.currentTimeMillis();
             splitTest.setClassIndex(splitTest.numAttributes() - 1 );
-            ObjectInputStream ois = new ObjectInputStream(new FileInputStream(Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +"output.model"));
+            ObjectInputStream ois = new ObjectInputStream(new FileInputStream(model_location));
             Classifier cls = (Classifier) ois.readObject();
             ois.close();
             final Evaluation eval = new Evaluation(splitTest);
             eval.evaluateModel(cls, splitTest);
-            running=false;
+            final long test_time= System.currentTimeMillis()-start;
 
 
             runOnUiThread(new Runnable()
@@ -154,26 +171,33 @@ public class SVMClassifier extends AppCompatActivity {
                         double FNR = eval.falseNegativeRate(0);
                         double HTER = (FPR + FNR) / 2;
 
-                        String output = "Classifier used: Bayseian Network,\nInput file: Breast.arff" + ",\nPercentage for training: " + percentage + ",\nCorrect prediction: " + eval.pctCorrect() + ",\nPower consumption: " +
-                                //powerConsumption / (1000 * 3600) +
-                                ",\nTrue positive: " +
-                                TPR + ",\nTrue negative: " + TNR + ",\nFalse Postive: " + FPR + ",\nFalse negative: " + FNR + ",\nHTER: " + HTER + ",\nRMSE: " + eval.rootMeanSquaredError();
+                        String output = "Classifier used: SVM , Input file: Breast.arff" + ",\nPercentage for training: " + percentage + ",\nAccuracy: " + eval.pctCorrect() + ",\nTime taken: " + test_time + ", milliseconds\nTrue positive: " + TPR + ",\nTrue negative: " + TNR + ",\nFalse Postive: " + FPR + ",\nFalse negative: " + FNR + ",\nHTER: " + HTER + ",\nRMSE: " + eval.rootMeanSquaredError();
 
-                        Toast.makeText(SVMClassifier.this,output,Toast.LENGTH_LONG).show();
-                        //writing to the file
+                        while(output==null)
+                        {
+                            Thread.sleep(500);
+                        }
 
-                        /*BufferedWriter out = new BufferedWriter(new FileWriter(file, true), 1024);
-                        out.write(data);
+                        BufferedReader br = new BufferedReader(new FileReader(new File(log_location)));
+                        String line;
+                        StringBuilder builder=new StringBuilder();
+                        while((line=br.readLine())!=null)
+                        {
+                            builder.append(line);
+                            builder.append("\n");
+                        }
+
+                        builder.append(output);
+
+                        BufferedWriter out = new BufferedWriter(new FileWriter(new File(log_location)));
+                        out.write(String.valueOf(builder));
                         out.newLine();
                         out.newLine();
-                        out.close();*/
-                        Thread.sleep(2000);
-                        TextView tv=(TextView) findViewById(R.id.textView);
-                        tv.setText(output);
-                        //Intent intent = new Intent(RFClassifier.this, log.class);
-                        //startActivity(intent);
+                        out.close();
 
-
+                        Intent intent = new Intent(SVMClassifier.this, log.class);
+                        intent.putExtra("output",output);
+                        startActivity(intent);
                     }
                     catch (Exception e)
                     {
@@ -187,17 +211,4 @@ public class SVMClassifier extends AppCompatActivity {
             e.printStackTrace();
         }
     }
-    Runnable batteryRunnable=new Runnable() {
-        @Override
-        public void run() {
-            long currentLife= 0;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                currentLife = mBatteryManager.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW);
-            }
-            powerConsumption=powerConsumption+currentLife*10;
-//            Log.d("power consumed",""+powerConsumption);
-            if(running)
-                batteryHandler.postDelayed(this,10);
-        }
-    };
 }

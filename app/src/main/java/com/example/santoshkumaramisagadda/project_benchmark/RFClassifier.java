@@ -33,11 +33,18 @@ import static android.provider.AlarmClock.EXTRA_MESSAGE;
 
 public class RFClassifier extends AppCompatActivity
 {
+
     String commandFile="command.txt";
     String command_location= Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +commandFile;
 
     String modelFile="output.model";
     String model_location= Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +modelFile;
+
+    String test_name="test.arff";
+    String test_location= Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +test_name;
+
+    String log_name="log";
+    String log_location= Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +log_name;
 
     static int percentage;
     static Button train_button;
@@ -46,10 +53,7 @@ public class RFClassifier extends AppCompatActivity
     static TextView depth;
     static TextView seed;
     static TextView noOfAttributes;
-    Handler batteryHandler;
-    BatteryManager mBatteryManager;
-    long powerConsumption=0;
-    boolean running;
+    
     Instances splitTest;
 
 
@@ -62,14 +66,21 @@ public class RFClassifier extends AppCompatActivity
         depth = (TextView) findViewById(R.id.editText5);
         noOfAttributes = (TextView) findViewById(R.id.editText6);
 
-
         train_button = (Button) findViewById(R.id.button3);
+        test_button=(Button) findViewById(R.id.button5);
+
+        test_button.setEnabled(false);
         train_button.setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
-                if (noOfIterations.getText() != "" && seed.getText() != "" && depth.getText() != "" && noOfAttributes.getText() != "") {
-                    String cmd = "java -cp wekaSTRIPPED.jar weka.classifiers.trees.RandomForest -I "+noOfIterations.getText()+" -S "+seed.getText()+" -depth "+depth.getText()+" -K "+noOfAttributes.getText()+" -t train.arff -d output.model";
-                    Toast.makeText(view.getContext(), cmd, Toast.LENGTH_LONG).show();
-                    try {
+                if (noOfIterations.getText() != "" && seed.getText() != "" && depth.getText() != "" && noOfAttributes.getText() != "")
+                {
+                    try
+                    {
+                        train_button.setEnabled(false);
+                        Toast.makeText(RFClassifier.this,"Model training, Please wait.",Toast.LENGTH_SHORT).show();
+                        Thread.sleep(1000);
+                        String cmd = "java -cp wekaSTRIPPED.jar weka.classifiers.trees.RandomForest -I "+noOfIterations.getText()+" -S "+seed.getText()+" -depth "+depth.getText()+" -K "+noOfAttributes.getText()+" -t train.arff -d output.model";
+
                         //delete both output.model and command.txt
                         File file1=new File(command_location);
                         if(file1.exists())
@@ -84,8 +95,12 @@ public class RFClassifier extends AppCompatActivity
                         writer1.flush();
                         writer1.close();
 
-                        Toast.makeText(
-                                view.getContext(), "Saved", Toast.LENGTH_SHORT).show();
+                        //upload command.txt
+                        UploadService upload=new UploadService(RFClassifier.this,getApplicationContext(),command_location,commandFile,train_button,0);
+                        upload.startUpload();
+
+                        test_button.setEnabled(true);
+
                     } catch (Exception e) {
                         Toast.makeText(view.getContext(), "Error in storing the command file : " + e.getMessage(), Toast.LENGTH_LONG).show();
                     }
@@ -93,11 +108,7 @@ public class RFClassifier extends AppCompatActivity
                     Toast.makeText(view.getContext(), "Please enter all the fields", Toast.LENGTH_LONG).show();
                 }
 
-                //upload command.txt
 
-                Toast.makeText(RFClassifier.this,"Model training, Please wait.",Toast.LENGTH_SHORT).show();
-                UploadService upload=new UploadService(RFClassifier.this,getApplicationContext(),command_location,commandFile,train_button,0);
-                upload.startUpload();
             }
 
         });
@@ -110,6 +121,10 @@ public class RFClassifier extends AppCompatActivity
                 downloadService.startDownload();
 
                 try {
+                    File model=new File(model_location);
+                    while(!model.exists()){
+                        model=new File(model_location);
+                    }
                     testData();
                 } catch (FileNotFoundException e) {
                     e.printStackTrace();
@@ -123,19 +138,18 @@ public class RFClassifier extends AppCompatActivity
     }
 
     public void testData() throws IOException {
-        //batteryHandler.post(batteryRunnable); //starting the battery handler to measure power consumption
-        BufferedReader inputReader=new BufferedReader(new FileReader(Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +"test.arff"));
+        BufferedReader inputReader=new BufferedReader(new FileReader(test_location));
         splitTest=new Instances(inputReader);
         try
         {
-            running=true;
+            long start=System.currentTimeMillis();
             splitTest.setClassIndex(splitTest.numAttributes() - 1 );
-            ObjectInputStream ois = new ObjectInputStream(new FileInputStream(Environment.getExternalStorageDirectory().getAbsolutePath() + File.separator + "Project" + File.separator +"output.model"));
+            ObjectInputStream ois = new ObjectInputStream(new FileInputStream(model_location));
             Classifier cls = (Classifier) ois.readObject();
             ois.close();
             final Evaluation eval = new Evaluation(splitTest);
             eval.evaluateModel(cls, splitTest);
-            running=false;
+            final long test_time= System.currentTimeMillis()-start;
 
 
             runOnUiThread(new Runnable()
@@ -152,26 +166,33 @@ public class RFClassifier extends AppCompatActivity
                         double FNR = eval.falseNegativeRate(0);
                         double HTER = (FPR + FNR) / 2;
 
-                        String output = "Classifier used: RF Classifier,\nInput file: Breast.arff" + ",\nPercentage for training: " + percentage + ",\nCorrect prediction: " + eval.pctCorrect() + ",\nPower consumption: " +
-                                //powerConsumption / (1000 * 3600) +
-                                ",\nTrue positive: " +
-                                TPR + ",\nTrue negative: " + TNR + ",\nFalse Postive: " + FPR + ",\nFalse negative: " + FNR + ",\nHTER: " + HTER + ",\nRMSE: " + eval.rootMeanSquaredError();
+                        String output = "Classifier used: RF Classifier, Input file: Breast.arff" + ",\nPercentage for training: " + percentage + ",\nAccuracy: " + eval.pctCorrect() + ",\nTime taken: " + test_time + ", milliseconds\nTrue positive: " + TPR + ",\nTrue negative: " + TNR + ",\nFalse Postive: " + FPR + ",\nFalse negative: " + FNR + ",\nHTER: " + HTER + ",\nRMSE: " + eval.rootMeanSquaredError();
 
-                        Toast.makeText(RFClassifier.this,output,Toast.LENGTH_LONG).show();
-                        //writing to the file
+                        while(output==null)
+                        {
+                            Thread.sleep(500);
+                        }
 
-                        /*BufferedWriter out = new BufferedWriter(new FileWriter(file, true), 1024);
-                        out.write(data);
+                        BufferedReader br = new BufferedReader(new FileReader(new File(log_location)));
+                        String line;
+                        StringBuilder builder=new StringBuilder();
+                        while((line=br.readLine())!=null)
+                        {
+                            builder.append(line);
+                            builder.append("\n");
+                        }
+
+                        builder.append(output);
+
+                        BufferedWriter out = new BufferedWriter(new FileWriter(new File(log_location)));
+                        out.write(String.valueOf(builder));
                         out.newLine();
                         out.newLine();
-                        out.close();*/
-                        Thread.sleep(2000);
-                        TextView tv=(TextView) findViewById(R.id.textView);
-                        tv.setText(output);
-                        //Intent intent = new Intent(RFClassifier.this, log.class);
-                        //startActivity(intent);
+                        out.close();
 
-
+                        Intent intent = new Intent(RFClassifier.this, log.class);
+                        intent.putExtra("output",output);
+                        startActivity(intent);
                     }
                     catch (Exception e)
                     {
@@ -185,17 +206,4 @@ public class RFClassifier extends AppCompatActivity
             e.printStackTrace();
         }
     }
-    Runnable batteryRunnable=new Runnable() {
-        @Override
-        public void run() {
-            long currentLife= 0;
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                currentLife = mBatteryManager.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW);
-            }
-            powerConsumption=powerConsumption+currentLife*10;
-//            Log.d("power consumed",""+powerConsumption);
-            if(running)
-                batteryHandler.postDelayed(this,10);
-        }
-    };
 }
